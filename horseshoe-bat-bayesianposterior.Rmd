@@ -1,0 +1,84 @@
+---
+title: "Mean difference estimation"
+author: "Thejasvi"
+date: "26/2/2021"
+output: html_document
+---
+
+This notebook will run bayesian posterior distribution analysis of the linear mixed models that have been inspected in the previous notebook titled 'horseshoe-bat-analysis.Rmd'.
+  
+```{r loading, include=FALSE, echo=TRUE}
+library(arm)
+library(coda)
+library(lme4)
+
+d <- read.csv('timeordered_indcall.csv')
+
+```
+
+## tFM duration 
+
+```{r tfmdurn}
+tfmdurn.nona <- d[!is.na(d$tfm_duration),]
+tfmdurn.lmm <- lmer(tfm_duration~multi_bat+(1|rechour), data=tfmdurn.nona)
+
+# - now run bayesian posterior distbn estimatin 
+tfmdurn.sim <- sim(tfmdurn.lmm, n.sim=5000)
+pctile.range <- 0.06
+tfmdurn.meandiff.range <- quantile(tfmdurn.sim@fixef[,2], c(pctile.range*0.5,1-(pctile.range*0.5)))
+tfmdurn.meandiff.hpd <- HPDinterval(as.mcmc(tfmdurn.sim@fixef[,2]), prob=0.93)
+tfmdurn.singlebt.hpd <- HPDinterval(as.mcmc(tfmdurn.sim@fixef[,1]), prob=0.93)
+
+# - quantify the relative increase in tfm duration between single and multiple bats:
+tfmdurn.relative.increase <- (tfmdurn.sim@fixef[,1]+tfmdurn.sim@fixef[,2])/tfmdurn.sim@fixef[,1]
+tfmdurn.relincrease.hpd <- round(HPDinterval(as.mcmc(tfmdurn.relative.increase), prob=0.93),2)
+
+hist(tfmdurn.relative.increase)
+```
+There is a relative increase in tFM duration is between `r tfmdurn.relincrease.hpd[1]`-`r tfmdurn.relincrease.hpd[2]` times that of single bat calls. 
+
+## iFM duration 
+```{r ifmdurn}
+ifmdurn.nona <- d[!is.na(d$ifm_duration),]
+ifmdurn.lmm <- lmer(ifm_duration~multi_bat+(1|rechour), data=ifmdurn.nona)
+
+# - now run bayesian posterior distbn estimatin 
+ifmdurn.sim <- sim(ifmdurn.lmm, n.sim=5000)
+ifmdurn.meandiff.range <- quantile(ifmdurn.sim@fixef[,2], c(pctile.range*0.5,1-(pctile.range*0.5)))
+ifmdurn.meandiff.hpd <- HPDinterval(as.mcmc(ifmdurn.sim@fixef[,2]), prob=0.93)
+ifmdurn.singlebt.hpd <- HPDinterval(as.mcmc(ifmdurn.sim@fixef[,1]), prob=0.93)
+
+# - quantify the relative increase in tfm duration between single and multiple bats:
+ifmdurn.relative.increase <- (ifmdurn.sim@fixef[,1]+ifmdurn.sim@fixef[,2])/ifmdurn.sim@fixef[,1]
+ifmdurn.relincrease.hpd <- round(HPDinterval(as.mcmc(ifmdurn.relative.increase), prob=0.93),2)
+
+hist(ifmdurn.relative.increase)
+```
+There is a relative change in multi-bat iFM duration between `r ifmdurn.relincrease.hpd[1]`-`r ifmdurn.relincrease.hpd[2]` times that of single-bat calls. 
+
+## CF duration 
+```{r cfdurn}
+cfdurn.nona <- d[!is.na(d$cf_duration),]
+cfdurn.nona$logcfdurn <- log(cfdurn.nona$cf_duration)
+cfdurn2.lmm <- lmer(logcfdurn~multi_bat+(1|rechour), data=cfdurn.nona)
+
+
+
+# - now run bayesian posterior distbn estimatin 
+cfdurn.sim <- sim(cfdurn2.lmm, n.sim=5000)
+cfdurn.meandiff.range <- quantile(cfdurn.sim@fixef[,2], c(pctile.range*0.5,1-(pctile.range*0.5)))
+cfdurn.meandiff.hpd <- HPDinterval(as.mcmc(cfdurn.sim@fixef[,2]), prob=0.93)
+cfdurn.singlebt.hpd <- HPDinterval(as.mcmc(cfdurn.sim@fixef[,1]), prob=0.93)
+
+# - quantify the relative increase in tfm duration between single and multiple bats:
+cfdurn.relative.increase <- (exp(cfdurn.sim@fixef[,1]+cfdurn.sim@fixef[,2]))/exp(cfdurn.sim@fixef[,1])
+cfdurn.relincrease.hpd <- round(HPDinterval(as.mcmc(cfdurn.relative.increase), prob=0.93),2)
+
+hist(cfdurn.relative.increase, xlab='Relative increase to single bat context', main='Multi-bat increase')
+abline(v=cfdurn.relincrease.hpd)
+```
+There is a relative change in multi-bat CF duration between `r cfdurn.relincrease.hpd[1]`-`r cfdurn.relincrease.hpd[2]` times that of single-bat calls. 
+
+
+
+

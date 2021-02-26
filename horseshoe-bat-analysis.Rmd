@@ -1,0 +1,118 @@
+---
+title: "Horseshoe bat data analysis"
+author: "Thejasvi"
+date: "2/25/2021"
+output: html_document
+---
+
+## Model generation and diagnostics for individul call analysis 
+Here we will be looking at the individual call analysis and estimating the mean difference of various parameters between single and multiple bat calls. 
+
+* TODO: 
+1. To check the residuals from the random effects -- see how to do the complete residual analysis for a mixed effects model 
+1. Include actual recording time, and check if there is a linear and non-linear effect of time on the observed variables.
+
+```{r loadingdata}
+library(arm)
+library(lme4)
+library(stringi)
+library(stringr)
+d <- read.csv('one_call_per_row_2020-12-17.csv')
+# create a single/multi-bat categorical variable
+d['multi_bat'] <- factor(d['num_bats']>1)
+d['annot_id'] <- stri_sub(d$video_annot_id,8,-1)
+d['annot_id'] <- str_replace_all(d$annot_id, '21502300','2123')
+# sort the dataset by time first
+time_ordering <- stri_order(d$annot_id,numeric=TRUE)
+d_tordered <- d[time_ordering,]
+
+# - is there an influence of the recording hour? 
+split.and.join <- function(x){
+  splitx <- str_split(x,'_')
+  jointx <- paste(splitx[[1]][1],'_',splitx[[1]][2],sep='')
+  jointx}
+d_tordered$rechour <- sapply(d_tordered$annot_id,split.and.join)
+
+# rescale some parameters to make them more intuitive
+d_tordered$tfm_duration <- d_tordered$tfm_duration*10^3 # to ms
+d_tordered$ifm_duration <- d_tordered$ifm_duration*10^3 # to ms
+d_tordered$cf_duration <- d_tordered$cf_duration*10^3 # to ms
+
+write.csv(d_tordered, 'timeordered_indcall.csv')
+```
+We will proceed by first running a simple mixed model with random intercept. 
+* $parameter$~$group.status + (1|recording.hour)$
+
+### tFM duration ```tFM duration```~```group.status+(1|recording.hour)```
+
+```
+The model diagnostics seem mostly okay. Let us also see if there is an effect on recording hour across nights. 
+
+```{r tfmdurn.lmm}
+tfmdurn.lmm <- lmer(tfm_duration~multi_bat+(1|rechour), data=d_tordered)
+nona.tfm.df <- cbind(d_tordered$multi_bat[!is.na(d$tfm_duration)],resid(tfmdurn.lmm))
+colnames(nona.tfm.df) <- c('multi_bat','resid.tfm.durn')
+nona.tfm.df <- as.data.frame(nona.tfm.df)
+# model diagnostics 
+par(mfrow=c(2,2))
+boxplot(resid.tfm.durn~multi_bat, data=nona.tfm.df)
+qqnorm(resid(tfmdurn.lmm ))
+qqline(resid(tfmdurn.lmm ))   
+hist(subset(nona.tfm.df, multi_bat==1)$resid.tfm.durn)
+hist(subset(nona.tfm.df, multi_bat==2)$resid.tfm.durn)
+```
+
+
+### iFM duration ```iFM duration```~```group.status+(1|recording.hour)```
+```{r ifmdurn}
+noifmna <- d_tordered[!is.na(d_tordered$ifm_duration),] # remove rows with missing ifm values
+ifm.lmm <- lmer(ifm_duration~multi_bat+(1|rechour), data=noifmna)
+
+ifmmodelresid <- as.data.frame(cbind(resid(ifm.lmm),noifmna$multi_bat))
+colnames(ifmmodelresid)<-c('resid','multi_bat')
+# model diagnostics 
+par(mfrow=c(2,2))
+boxplot(resid~multi_bat, data=ifmmodelresid)
+qqnorm(resid(ifm.lmm ))
+qqline(resid(ifm.lmm ))   
+hist(subset(ifmmodelresid, multi_bat==1)$resid)
+hist(subset(ifmmodelresid, multi_bat==2)$resid)
+
+```
+The diagnostics of the iFM model suggest a good fit to the assumptions of the lmm. 
+
+### CF duration ```CF duration```~```group.status+(1|recording.hour)```
+```{r cfdurn}
+cfdurn.nona <- d_tordered[!is.na(d_tordered$cf_duration),]
+cfdurn.lmm <- lmer(cf_duration~multi_bat+(1|rechour), data=cfdurn.nona)
+
+cfmodelresid <- as.data.frame(cbind(resid(cfdurn.lmm),cfdurn.nona$multi_bat))
+colnames(cfmodelresid)<-c('resid','multi_bat')
+# model diagnostics 
+par(mfrow=c(1,3))
+#boxplot(resid~multi_bat, data=cfmodelresid)
+qqnorm(resid(cfdurn.lmm ))
+qqline(resid(cfdurn.lmm))   
+hist(subset(cfmodelresid, multi_bat==1)$resid, main='Residuals, single bat')
+hist(subset(cfmodelresid, multi_bat==2)$resid, main='Resduals, multi bat')
+```
+The model fit isn't great. This may hve to do with the dominance of low duration calls, and a few very long calls. What if we transform the cf duration? 
+
+```{r cfdurn.trans}
+cfdurn.nona$logcfdurn <- log(cfdurn.nona$cf_duration)
+cfdurn2.lmm <- lmer(logcfdurn~multi_bat+(1|rechour), data=cfdurn.nona)
+
+cfmodel2resid <- as.data.frame(cbind(resid(cfdurn2.lmm),cfdurn.nona$multi_bat))
+colnames(cfmodel2resid)<-c('resid','multi_bat')
+# model diagnostics 
+par(mfrow=c(2,2))
+#boxplot(resid~multi_bat, data=cfmodelresid)
+qqnorm(resid(cfdurn2.lmm ))
+qqline(resid(cfdurn2.lmm))   
+hist(subset(cfmodel2resid, multi_bat==1)$resid, main='Residuals, single bat')
+hist(subset(cfmodel2resid, multi_bat==2)$resid, main='Resduals, multi bat')
+plot(ranef(cfdurn2.lmm))
+qqline(ranef(cfdurn2.lmm))
+
+```
+The fit is much better than before, and the distribution of residuals is also more similar between the two groups. 
